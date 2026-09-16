@@ -1,0 +1,7 @@
+fastapi==0.116.0
+pydantic==1.10.15; python_version < "3.14"
+pydantic==2.13.5; python_version >= "3.14"
+uvicorn==0.35.0
+python-multipart==0.0.20
+wsproto==1.2.0
+websockets==12.0
