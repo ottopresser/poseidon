@@ -76,6 +76,16 @@ curl -sS \
   "$POSEIDON_BASE_URL/v1/vms/$VM_NAME/config"
 ```
 
+## 5b) VM Guest IP (`GET /v1/vms/{vm_name}/ip`)
+
+```bash
+curl -sS \
+  -H "X-API-Key: $POSEIDON_API_KEY" \
+  "$POSEIDON_BASE_URL/v1/vms/$VM_NAME/ip"
+```
+
+The convenience `ip_address` field is `null` until the host ARP table contains an address for one of the VM's configured MAC addresses.
+
 ## 6) VM Start (`POST /v1/vms/{vm_name}/start`)
 
 ```bash

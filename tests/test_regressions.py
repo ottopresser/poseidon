@@ -231,6 +231,63 @@ class VmCliServiceTests(unittest.TestCase):
         ), self.assertRaisesRegex(VmCliError, "switch failed"):
             service.list_switches()
 
+    def test_guest_ip_matches_configured_mac_in_arp_table(self) -> None:
+        with TemporaryDirectory() as vm_root:
+            vm_dir = Path(vm_root) / "vm-01"
+            vm_dir.mkdir()
+            (vm_dir / "vm-01.conf").write_text(
+                'network0_mac="58:9C:FC:01:02:03"\n',
+                encoding="utf-8",
+            )
+            service = VmCliService(vm_root_dir=vm_root)
+            arp = VmCommandOutput(
+                ["arp", "-an"],
+                0,
+                "? (192.0.2.10) at 58:9c:fc:01:02:03 on em0 expires in 1198 seconds [ethernet]\n",
+                "",
+            )
+            with patch.object(service, "_run_external", return_value=arp) as run:
+                result = service.vm_guest_ip("vm-01")
+
+        self.assertEqual(result["ip_address"], "192.0.2.10")
+        self.assertEqual(result["interfaces"][0]["ip_addresses"], ["192.0.2.10"])
+        run.assert_called_once_with("arp", ["-an"])
+
+    def test_guest_ip_reports_arp_command_failure(self) -> None:
+        with TemporaryDirectory() as vm_root:
+            vm_dir = Path(vm_root) / "vm-01"
+            vm_dir.mkdir()
+            (vm_dir / "vm-01.conf").write_text(
+                'network0_mac="58:9c:fc:01:02:03"\n',
+                encoding="utf-8",
+            )
+            service = VmCliService(vm_root_dir=vm_root)
+            with patch.object(
+                service,
+                "_run_external",
+                return_value=VmCommandOutput(["arp", "-an"], 1, "", "arp failed"),
+            ), self.assertRaisesRegex(VmCliError, "arp failed"):
+                service.vm_guest_ip("vm-01")
+
+    def test_guest_ip_is_null_when_arp_has_no_matching_entry(self) -> None:
+        with TemporaryDirectory() as vm_root:
+            vm_dir = Path(vm_root) / "vm-01"
+            vm_dir.mkdir()
+            (vm_dir / "vm-01.conf").write_text(
+                'network0_mac="58:9c:fc:01:02:03"\n',
+                encoding="utf-8",
+            )
+            service = VmCliService(vm_root_dir=vm_root)
+            with patch.object(
+                service,
+                "_run_external",
+                return_value=VmCommandOutput(["arp", "-an"], 0, "? (192.0.2.10) at (incomplete) on em0\n", ""),
+            ):
+                result = service.vm_guest_ip("vm-01")
+
+        self.assertIsNone(result["ip_address"])
+        self.assertEqual(result["interfaces"][0]["ip_addresses"], [])
+
     def test_metrics_parse_verbose_list_and_tap_counters(self) -> None:
         service = VmCliService()
         verbose = VmCommandOutput(
@@ -421,8 +478,16 @@ class MainOperationTests(unittest.TestCase):
             "/v1/vms/{vm_name}/clone",
             "/v1/vms/{vm_name}/disks",
             "/v1/vms/{vm_name}/disks/{disk_index}",
+            "/v1/vms/{vm_name}/ip",
         }
         self.assertLessEqual(expected, main.app.openapi()["paths"].keys())
+
+    def test_guest_ip_endpoint_maps_missing_vm_to_not_found(self) -> None:
+        service = MagicMock()
+        service.vm_guest_ip.side_effect = VmCliError("VM config not found: /vm/missing/missing.conf")
+        with patch.object(main, "vm_service", service), self.assertRaises(HTTPException) as raised:
+            main.vm_ip_address("missing")
+        self.assertEqual(raised.exception.status_code, 404)
 
     def test_stopped_guard_rejects_running_vm(self) -> None:
         service = MagicMock()

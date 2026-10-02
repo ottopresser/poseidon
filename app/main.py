@@ -39,6 +39,7 @@ from app.models import (
     VmOperationWarning,
     VmActionResponse,
     VmInfoResponse,
+    VmIpAddressResponse,
     VmListItem,
     VmListResponse,
     VmMetricsListResponse,
@@ -987,6 +988,17 @@ def vm_info(vm_name: VmName) -> VmInfoResponse:
         raise HTTPException(status_code=500, detail=result.stderr.strip() or result.stdout.strip())
 
     return VmInfoResponse(vm_name=vm_name, result=_command_result(result))
+
+
+@vm_router.get("/vms/{vm_name}/ip", response_model=VmIpAddressResponse)
+def vm_ip_address(vm_name: VmName) -> VmIpAddressResponse:
+    try:
+        result = vm_service.vm_guest_ip(vm_name)
+    except VmCliError as exc:
+        detail = str(exc)
+        status_code = 404 if detail.startswith("VM config not found:") else 500
+        raise HTTPException(status_code=status_code, detail=detail) from exc
+    return VmIpAddressResponse(**result)
 
 
 @vm_router.get("/vms/{vm_name}/config", response_model=VmConfigResponse)

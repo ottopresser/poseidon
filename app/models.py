@@ -64,6 +64,18 @@ class VmInfoResponse(BaseModel):
     result: CommandResult
 
 
+class VmIpAddressInterface(BaseModel):
+    network_index: int
+    mac_address: str
+    ip_addresses: list[str] = Field(default_factory=list)
+
+
+class VmIpAddressResponse(BaseModel):
+    vm_name: str
+    ip_address: str | None = None
+    interfaces: list[VmIpAddressInterface] = Field(default_factory=list)
+
+
 class VmConfigResponse(BaseModel):
     vm_name: str
     config_path: str

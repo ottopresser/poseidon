@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager, suppress
 import fcntl
 import hashlib
+import ipaddress
 import os
 import re
 import shlex
@@ -722,6 +723,66 @@ class VmCliService:
     def vm_exists(self, vm_name: str) -> bool:
         _output, rows = self.list_vms()
         return any(row.get("NAME", "") == vm_name for row in rows)
+
+    @staticmethod
+    def _parse_arp_table(stdout: str) -> dict[str, list[str]]:
+        addresses_by_mac: dict[str, list[str]] = {}
+        for line in stdout.splitlines():
+            match = re.search(
+                r"\(([^)]+)\)\s+at\s+([0-9a-f]{2}(?::[0-9a-f]{2}){5})\b",
+                line,
+                re.IGNORECASE,
+            )
+            if not match:
+                continue
+            try:
+                address = ipaddress.ip_address(match.group(1))
+            except ValueError:
+                continue
+            if address.version != 4:
+                continue
+            mac_address = match.group(2).lower()
+            addresses = addresses_by_mac.setdefault(mac_address, [])
+            if str(address) not in addresses:
+                addresses.append(str(address))
+        return addresses_by_mac
+
+    def vm_guest_ip(self, vm_name: str) -> dict[str, object]:
+        _config_path, config = self.read_vm_config(vm_name)
+        interfaces: list[dict[str, object]] = []
+        for key, value in config.items():
+            match = re.fullmatch(r"network(\d+)_mac", key)
+            if match and value:
+                interfaces.append(
+                    {
+                        "network_index": int(match.group(1)),
+                        "mac_address": value.lower(),
+                        "ip_addresses": [],
+                    }
+                )
+        interfaces.sort(key=lambda item: int(item["network_index"]))
+
+        if interfaces:
+            output = self._run_external("arp", ["-an"])
+            if output.return_code != 0:
+                raise VmCliError(output.stderr.strip() or output.stdout.strip() or "Failed to inspect ARP table")
+            addresses_by_mac = self._parse_arp_table(output.stdout)
+            for interface in interfaces:
+                interface["ip_addresses"] = addresses_by_mac.get(str(interface["mac_address"]), [])
+
+        ip_address = next(
+            (
+                address
+                for interface in interfaces
+                for address in interface["ip_addresses"]
+            ),
+            None,
+        )
+        return {
+            "vm_name": vm_name,
+            "ip_address": ip_address,
+            "interfaces": interfaces,
+        }
 
     def start_vm(self, vm_name: str) -> VmCommandOutput:
         return self._run(["start", vm_name])

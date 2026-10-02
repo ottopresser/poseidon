@@ -81,6 +81,7 @@ Implemented endpoints:
 - `POST /v1/vms/{vm_name}/detach-media` -> removes file-backed installer disk entries from VM config and cleans up any symlinks in the VM directory
 - `POST /v1/vms/{vm_name}/configure` -> wraps non-interactive `sysrc -f /vm/<vm_name>/<vm_name>.conf <key=value>...`
 - `GET /v1/vms/{vm_name}/config` -> reads and parses `/vm/<vm_name>/<vm_name>.conf`
+- `GET /v1/vms/{vm_name}/ip` -> resolves configured VM MAC addresses through the host IPv4 ARP table
 - `POST /v1/vms/{vm_name}/console` -> wraps `vm console <vm_name>`
 - `POST /v1/vms/{vm_name}/console/token` -> issues short-lived token for WebSocket console
 - `WS /v1/vms/{vm_name}/console/ws` -> interactive console bridge to `vm console <vm_name>`
@@ -124,6 +125,7 @@ Create and media behavior:
 - Uploaded non-memstick IMG files are intentionally shared writable disks. Poseidon blocks deletion and overwrite while a VM references the image.
 - Production service installs bind to `127.0.0.1` and require a TLS reverse proxy for remote HTTP and WebSocket access.
 - VM metrics are host-visible values. Guest-internal CPU and memory utilization require an agent inside each guest.
+- Guest IP lookup returns `ip_address: null` until the host has learned the VM's address through ARP; each configured interface and any matching addresses are included in `interfaces`.
 - Snapshot, rollback, and clone operations require a ZFS-backed vm-bhyve datastore. Rollback, clone, and disk changes require a stopped VM.
 
 ## Local Development
